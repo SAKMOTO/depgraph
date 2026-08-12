@@ -1,72 +1,265 @@
-# DepGraph - Software Dependency Graph Analysis
+# DepGraph
 
-DepGraph is a comprehensive software dependency and vulnerability tracking application. It helps engineering organizations map their software ecosystem and instantly calculate the "blast radius" of critical vulnerabilities across deeply nested dependencies.
+<div align="center">
 
-## Why a Graph Database?
+### Graph-powered dependency risk visibility for engineering teams
 
-Managing software dependencies involves tracking multi-level, multi-hop transitive relationships. When a new vulnerability (like Log4Shell) is announced in a deep-level transitive package, organizations need to immediately know which of their high-level projects are affected. 
+Track vulnerable packages, trace transitive dependency paths, and understand project blast radius in one clean dashboard.
 
-Relational databases require complex, slow, and hard-to-maintain recursive CTEs (Common Table Expressions) to traverse these arbitrary-depth dependencies. Graph databases like **CognoDB** are built for exactly this. They natively handle arbitrary-depth traversals, allowing us to easily identify the "blast radius" of a vulnerability across an entire organization's software portfolio and instantly visualize the exact dependency paths that introduce the risk.
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.0-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19.2.8-61DAFB?logo=react&logoColor=000)](https://react.dev/)
+[![Neo4j Driver](https://img.shields.io/badge/Neo4j_Driver-6.2.0-4581C3?logo=neo4j&logoColor=white)](https://www.npmjs.com/package/neo4j-driver)
+[![License](https://img.shields.io/badge/License-MIT-informational)](#license)
 
-## Data Model
+</div>
 
-The graph consists of three node labels and two relationship types:
+---
 
-```mermaid
-graph TD
-    Project((Project)) -- "[:DEPENDS_ON {version}]" --> Package((Package))
-    Package -- "[:DEPENDS_ON {version}]" --> Package
-    Package -- "[:HAS_VULNERABILITY]" --> Vulnerability((Vulnerability))
+## ✨ Overview
+
+**DepGraph** is a security-focused dependency analysis interface built with **Next.js + React** and backed by a **graph database (CognoDB/Neo4j protocol)**.
+
+It helps you:
+
+- View vulnerabilities with severity and affected project count.
+- Inspect projects and quickly see inherited risks.
+- Open detailed impact analysis modals to trace dependency paths.
+- Understand direct + transitive dependency relationships visually.
+
+The app is designed to answer one question fast:
+
+> **If a package is vulnerable, which projects are impacted and through what path?**
+
+---
+
+## 🖼️ Screenshots
+
+> Add these files to your repo (recommended path: `docs/images/`) and keep the same names used below.
+
+### Vulnerabilities view
+
+![DepGraph Vulnerabilities View](docs/images/depgraph-vulnerabilities.png)
+
+### Vulnerabilities (alternate capture)
+
+![DepGraph Vulnerabilities Alt](docs/images/depgraph-vulnerabilities-2.png)
+
+### Projects view
+
+![DepGraph Projects View](docs/images/depgraph-projects.png)
+
+---
+
+## 🧱 Tech Stack
+
+- **Framework:** Next.js 16 (App Router)
+- **UI:** React 19 + CSS Modules + Global CSS
+- **Icons:** lucide-react
+- **Data Layer:** Neo4j-compatible driver (`neo4j-driver`) for CognoDB
+- **Config/Env:** dotenv (for seeding script)
+
+Language composition:
+
+- **CSS:** 50.6%
+- **JavaScript:** 49.4%
+
+---
+
+## 📁 Repository Structure
+
+```text
+depgraph/
+├── public/
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   └── window.svg
+├── scripts/
+│   └── seed.js
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.js
+│   │   ├── page.js
+│   │   └── page.module.css
+│   └── lib/
+│       └── db.js
+├── .gitignore
+├── AGENTS.md
+├── CLAUDE.md
+├── eslint.config.mjs
+├── jsconfig.json
+├── next.config.mjs
+├── package.json
+└── README.md
 ```
 
-* **Project**: Represents a top-level software artifact (e.g., Core API, Customer Dashboard).
-* **Package**: Represents an open-source library or internal dependency (e.g., React, Log4j).
-* **Vulnerability**: Represents a known security flaw (CVE).
+---
 
-## Main Cypher Queries Explained
+## 🔍 Code & Architecture Analysis
 
-### 1. The Blast Radius (Multi-hop Traversal)
-When you click on a vulnerability, the application finds every project affected by it, regardless of how many layers deep the dependency is.
-```cypher
-MATCH path = (p:Project)-[:DEPENDS_ON*1..]->(pkg:Package)-[:HAS_VULNERABILITY]->(v:Vulnerability {cve_id: $cve_id})
-RETURN p.name AS project, p.team AS team, [node in nodes(path) | labels(node)[0] + ' ' + coalesce(node.name, node.cve_id)] AS dependency_path
-```
-* `[:DEPENDS_ON*1..]` is the magic of graph databases—it traverses the dependency tree to *any* depth (1 to infinity hops).
-* We return the full `path` to show the user exactly how the vulnerability reaches their project.
+### 1) Frontend flow (`src/app/page.js`)
 
-### 2. Project Security Audit
-When viewing a specific project, we calculate all vulnerabilities it inherits:
-```cypher
-MATCH (p:Project {id: $id})
-OPTIONAL MATCH path = (p)-[:DEPENDS_ON*1..]->(pkg:Package)-[:HAS_VULNERABILITY]->(v:Vulnerability)
-RETURN p, collect({ vulnerability: v, path: path })
-```
+The main dashboard component:
 
-## Setup and Run Instructions
+- Uses `useEffect` to fetch initial datasets from:
+  - `GET /api/projects`
+  - `GET /api/vulnerabilities`
+- Maintains UI state for:
+  - active tab (`vulnerabilities` / `projects`)
+  - loading + error handling
+  - selected card modal
+  - modal dependency impact results
+- Supports two modal drill-downs:
+  - CVE → impacted projects via `/api/impact?cve_id=...`
+  - Project → inherited vulnerabilities via `/api/projects/:id`
 
-### 1. Set up CognoDB Cloud
-1. Go to [console.cognodb.com/signup](https://console.cognodb.com/signup) and create a free account.
-2. Create a free (c0) instance and pick a region.
-3. Once provisioned, you will receive a `bolt+s://` URI and a generated password for the `cognodb` user. Save these.
+This gives a simple but powerful exploratory workflow for security triage.
 
-### 2. Clone and Configure
-1. Clone this repository.
-2. Create a `.env.local` file in the root directory:
-```env
-COGNO_URI=bolt+s://<your-instance-id>.databases.cognodb.cloud
-COGNO_PASSWORD=<your-generated-password>
-```
+### 2) Styling system (`src/app/page.module.css`, `src/app/globals.css`)
 
-### 3. Install & Seed Database
-Install dependencies and run the seed script to populate your CognoDB instance with realistic sample data:
+- Dark, modern, glass-like UI design.
+- Card-based information hierarchy for fast scanning.
+- Severity badges (Critical / High / Medium / etc.) visually communicate risk.
+- Responsive layout and modal overlays improve detail inspection.
+
+### 3) App shell (`src/app/layout.js`)
+
+- Central metadata definition for title/description.
+- Root HTML/body wrapper for all routes.
+
+### 4) Database connectivity (`src/lib/db.js`)
+
+- Centralized graph DB connection logic (Neo4j-compatible driver).
+- Designed to support API route queries for dependencies and vulnerability mapping.
+
+### 5) Seed script (`scripts/seed.js`)
+
+The script initializes full demo graph data by:
+
+- Clearing current graph (`MATCH (n) DETACH DELETE n`).
+- Creating node sets:
+  - `Project`
+  - `Package`
+  - `Vulnerability`
+- Creating relationships:
+  - `(:Project)-[:DEPENDS_ON]->(:Package)`
+  - `(:Package)-[:DEPENDS_ON]->(:Package)` (transitive)
+  - `(:Package)-[:HAS_VULNERABILITY]->(:Vulnerability)`
+
+Included sample CVEs:
+
+- `CVE-2021-44228` (Log4Shell)
+- `CVE-2023-45857` (Axios SSRF)
+- `CVE-2021-23337` (lodash.template)
+
+This data model is ideal for path traversal queries and blast-radius analysis.
+
+---
+
+## ⚙️ Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+- Access to a Neo4j-compatible endpoint (CognoDB)
+
+### 1) Clone & install
+
 ```bash
+git clone https://github.com/SAKMOTO/depgraph.git
+cd depgraph
 npm install
+```
+
+### 2) Configure environment
+
+Create `.env.local` in the project root:
+
+```env
+COGNO_URI=your_database_uri
+COGNO_PASSWORD=your_database_password
+```
+
+> The seed script uses `cognodb` as the username and reads URI/password from env vars.
+
+### 3) Seed the graph data
+
+```bash
 node scripts/seed.js
 ```
 
-### 4. Run the Application
-Start the Next.js development server:
+### 4) Run locally
+
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser. The application features a premium dark-mode interface with glassmorphism effects, handling errors gracefully if the database is unreachable.
+
+Open: `http://localhost:3000`
+
+---
+
+## 🧪 Available Scripts
+
+From `package.json`:
+
+- `npm run dev` → start development server
+- `npm run build` → production build
+- `npm run start` → run production server
+- `npm run lint` → run ESLint
+
+---
+
+## 🔌 API Surface (used by UI)
+
+The UI currently depends on these endpoints under `src/app/api/`:
+
+- `GET /api/projects`
+- `GET /api/vulnerabilities`
+- `GET /api/impact?cve_id=<id>`
+- `GET /api/projects/:id`
+
+These endpoints provide the data contracts consumed by dashboard cards and modal drill-downs.
+
+---
+
+## 🚀 Why Graph Modeling Works Here
+
+Dependency risk is naturally graph-shaped:
+
+- Projects connect to many packages.
+- Packages depend on other packages.
+- Vulnerabilities can appear at any depth.
+
+Using a graph model makes **path tracing**, **impact analysis**, and **blast-radius reporting** efficient and explainable.
+
+---
+
+## 🛠️ Improvement Ideas
+
+- Add authentication + role-based views.
+- Add CVSS scoring and sorting.
+- Add timeline/history of vulnerability ingestion.
+- Export impact reports (CSV/PDF).
+- Add automated ingestion from advisories (GitHub Advisory DB, osv.dev).
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome!
+
+1. Fork the repo
+2. Create a feature branch
+3. Commit changes
+4. Open a pull request
+
+---
+
+## 📄 License
+
+MIT License (recommended). Add a `LICENSE` file if you want this badge to represent an explicit license in-repo.
