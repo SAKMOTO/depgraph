@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Activity, ShieldAlert, Layers, Network, X, ArrowRight } from 'lucide-react';
+import { Activity, ShieldAlert, Layers, Network, X, ArrowRight, Search, Box } from 'lucide-react';
 import styles from './page.module.css';
 
 export default function Dashboard() {
@@ -11,7 +11,9 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [impactData, setImpactData] = useState(null);
+  const [projectDependencies, setProjectDependencies] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     async function fetchData() {
@@ -45,6 +47,7 @@ export default function Dashboard() {
   const openImpactModal = async (vuln) => {
     setSelectedItem(vuln);
     setImpactData(null);
+    setProjectDependencies(null);
     setModalLoading(true);
     try {
       const res = await fetch(`/api/impact?cve_id=${vuln.cve_id}`);
@@ -60,11 +63,13 @@ export default function Dashboard() {
   const openProjectModal = async (project) => {
     setSelectedItem(project);
     setImpactData(null);
+    setProjectDependencies(null);
     setModalLoading(true);
     try {
       const res = await fetch(`/api/projects/${project.id}`);
       const data = await res.json();
       setImpactData(data.vulnerabilities);
+      setProjectDependencies(data.dependencies);
     } catch (err) {
       console.error(err);
     } finally {
@@ -75,6 +80,7 @@ export default function Dashboard() {
   const closeModal = () => {
     setSelectedItem(null);
     setImpactData(null);
+    setProjectDependencies(null);
   };
 
   if (loading) {
@@ -100,6 +106,16 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const filteredVulnerabilities = data.vulnerabilities.filter(v => 
+    v.cve_id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    v.summary.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredProjects = data.projects.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.team.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className={styles.container}>
@@ -127,8 +143,20 @@ export default function Dashboard() {
         </button>
       </div>
 
+      <div className={styles.searchContainer}>
+        <Search size={20} style={{ color: 'var(--text-muted)', position: 'absolute', marginLeft: '12px' }} />
+        <input 
+          type="text" 
+          className={styles.searchInput} 
+          placeholder={`Search ${activeTab}...`} 
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ paddingLeft: '40px' }}
+        />
+      </div>
+
       <div className={styles.grid}>
-        {activeTab === 'vulnerabilities' && data.vulnerabilities.map((vuln, i) => (
+        {activeTab === 'vulnerabilities' && filteredVulnerabilities.map((vuln, i) => (
           <div 
             key={vuln.cve_id} 
             className={`${styles.card} ${styles['glass-panel']} ${styles['animate-fade-in']} styles.delay-${(i%3)+1}`}
@@ -150,7 +178,7 @@ export default function Dashboard() {
           </div>
         ))}
 
-        {activeTab === 'projects' && data.projects.map((proj, i) => (
+        {activeTab === 'projects' && filteredProjects.map((proj, i) => (
           <div 
             key={proj.id} 
             className={`${styles.card} ${styles['glass-panel']} ${styles['animate-fade-in']} styles.delay-${(i%3)+1}`}
@@ -195,11 +223,14 @@ export default function Dashboard() {
                     Impact Analysis: {selectedItem.cve_id}
                   </h2>
                   <p className={styles.cardBody}>{selectedItem.summary}</p>
+                  <p className={styles.cardBody} style={{ marginTop: '8px' }}>
+                    <strong>Remediation:</strong> Identify and upgrade the vulnerable packages listed below across all affected projects immediately.
+                  </p>
                 </>
               ) : (
                 <>
                   <h2 className={styles.title} style={{ fontSize: '1.8rem', marginBottom: '8px' }}>
-                    Security Audit: {selectedItem.name}
+                    Project Audit: {selectedItem.name}
                   </h2>
                   <p className={styles.cardBody}>Team: {selectedItem.team}</p>
                 </>
@@ -213,15 +244,42 @@ export default function Dashboard() {
               </div>
             ) : (
               <div>
+                {/* Project Dependencies Section */}
+                {!selectedItem.cve_id && projectDependencies && (
+                  <div style={{ marginBottom: '32px' }}>
+                    <h3 className={styles.sectionTitle}>
+                      <Box size={20} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                      Direct Dependencies
+                    </h3>
+                    {projectDependencies.length > 0 ? (
+                      <div>
+                        {projectDependencies.map((dep, i) => (
+                          <span key={i} className={styles.dependencyBadge}>
+                            {dep.name} @ {dep.version} ({dep.ecosystem})
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: 'var(--text-muted)' }}>No direct dependencies found in the graph.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Vulnerability Path Section */}
+                <h3 className={styles.sectionTitle}>
+                  <ShieldAlert size={20} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                  {selectedItem.cve_id ? 'Blast Radius (Affected Projects)' : 'Inherited Vulnerabilities'}
+                </h3>
+                
                 {impactData && impactData.length === 0 ? (
-                  <p style={{ color: 'var(--success)', textAlign: 'center', padding: '40px 0' }}>
-                    No vulnerabilities found in the dependency tree!
+                  <p style={{ color: 'var(--success)', padding: '20px 0' }}>
+                    ✅ No vulnerabilities found in the dependency tree!
                   </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {selectedItem.cve_id 
                       ? impactData?.map((impact, i) => (
-                        <div key={i} className={styles.glassPanel} style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
+                        <div key={i} className={styles['glass-panel']} style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
                           <h4 style={{ marginBottom: '12px', color: 'var(--foreground)' }}>{impact.project} ({impact.team})</h4>
                           <div className={styles.pathItem}>
                             {impact.path.map((node, j) => (
@@ -234,7 +292,7 @@ export default function Dashboard() {
                         </div>
                       ))
                       : impactData?.map((vulnData, i) => (
-                        <div key={i} className={styles.glassPanel} style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
+                        <div key={i} className={styles['glass-panel']} style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                             <h4 style={{ color: 'var(--foreground)' }}>{vulnData.vulnerability.cve_id}</h4>
                             <span className={`${styles.badge} ${styles[vulnData.vulnerability.severity.toLowerCase()]}`}>

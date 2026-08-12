@@ -207,6 +207,48 @@
   color: var(--text-muted);
 }
 
+.searchContainer {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  width: 100%;
+  max-width: 400px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--foreground);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.searchInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.dependencyBadge {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  margin-right: 8px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.sectionTitle {
+  font-size: 1.2rem;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  color: var(--foreground);
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 8px;
+}
+
 .pathNode {
   background: rgba(255, 255, 255, 0.05);
   padding: 6px 12px;
